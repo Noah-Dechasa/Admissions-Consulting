@@ -1,0 +1,264 @@
+```{r}
+# ---- Library Loading ----
+library(tidyverse)    
+library(mosaic)      
+library(ggformula)    
+library(Stat2Data)    
+library(regclass)     
+library(dplyr)        
+library(ggplot2)     
+library(reshape2)     
+library(plotly)       
+library(readxl)       
+```
+
+```{r}
+# ---- Data Loading and Initial Processing ----
+
+# Loading the admissions data from an Excel file
+Admissions_data_2021_22 <- read_excel("Admissions_data_2021_22.xlsx")
+Admin_data <- Admissions_data_2021_22  
+
+# Initial Data Inspection
+# Previewing the first few rows to understand the structure
+Head <- head(Admin_data)
+
+# Checking for missing values and examining data types
+sapply(Admin_data, function(x) sum(is.na(x)))  # Counting NA values in each column
+
+# Data Type Adjustments
+# Converting 'Inquiry' and 'Applicant' to factors for categorical analysis
+Admin_data$Inquiry <- as.factor(Admin_data$Inquiry)
+Admin_data$Applicant <- as.factor(Admin_data$Applicant)
+
+# ---- Data Transformation ----
+
+# Creating a new 'Category' variable for detailed visualization
+Admin_data <- Admin_data %>%
+  mutate(Category = case_when(
+    Inquiry == "1" & Applicant == "1" ~ "Inquired and Applied",
+    Inquiry == "1" & Applicant == "0" ~ "Only Inquired",
+    Inquiry == "0" & Applicant == "1" ~ "Only Applied",
+    TRUE ~ "Neither"
+  ))
+
+# Aggregating Data for Analysis
+# Counting applicants by state
+applicants_by_state <- Admin_data %>%
+  filter(Applicant == "1") %>%
+  count(State) %>%
+  arrange(desc(n))
+
+# Counting inquiries by state
+inquiries_by_state <- Admin_data %>%
+  filter(Inquiry == "1") %>%
+  count(State) %>%
+  arrange(desc(n))
+
+# Counting applicants who inquired but did not apply, by state
+inquired_not_applied_by_state <- Admin_data %>%
+  filter(Inquiry == "1", Applicant == "0") %>%
+  count(State) %>%
+  arrange(desc(n))
+
+# Note: All students who applied had inquired, as per the data analysis
+focus_states <- c("MD", "KY", "OH", "CO", "MA" ,"GA" , "PA", "IL","MI" , "MN", "NY","CA" ,"VA" ,"IN" ,"TX" ,"NJ")  
+
+# Filter the dataset to include only the focus states
+Admin_data_filtered <- Admin_data %>%
+  filter(State %in% focus_states)
+
+# Example placeholders for top and least states
+top_applicant_states <- c("OH", "MI", "PA", "IL", "KY")
+top_inquiry_states <- c("OH", "MI", "PA", "IL", "IN")
+top_inquired_not_applied_states <- c("OH", "MI", "PA", "IL", "TX")
+
+least_applicant_states <- c("WV", "KS", "CT", "DC", "WI")  
+least_inquiry_states <- c("NE", "NC", "WI", "KS", "DC")  
+least_inquired_not_applied_states <- c("NE", "NC", "DC", "KS", "WV")
+```
+
+
+
+```{r}
+# ---- Plotting ----
+
+# 1. Number of Applicants by State
+ggplot(applicants_by_state, aes(y = reorder(State, n), x = n, fill = n)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Number of Applicants by State", y = "State", x = "Number of Applicants") +
+  theme_minimal()
+
+# 2. Number of Inquiries by State
+ggplot(inquiries_by_state, aes(y = reorder(State, n), x = n, fill = n)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Number of Inquiries by State", y = "State", x = "Number of Inquiries") +
+  theme_minimal()
+
+# 3. Number of Students who Inquired but Didn't Apply by State
+ggplot(inquired_not_applied_by_state, aes(y = reorder(State, n), x = n, fill = n)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Number of Students who Inquired but Didn't Apply by State", y = "State", x = "Number of Students Who Didn't Apply") +
+  theme_minimal()
+
+# 4. Distribution by Application and Inquiry Status
+ggplot(Admin_data, aes(x = Category, fill = Category)) +
+  geom_bar() +
+  labs(title = "Distribution by Application and Inquiry Status", x = "Status", y = "Number of Students") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# 5. Applicant Status by Inquiry and Sophomore Status
+# Combining two similar plots into one using facet_wrap for a more compact visualization
+ggplot(Admin_data, aes(x = as.factor(Inquiry), fill = as.factor(Applicant))) +
+  geom_bar(position = "dodge") +
+  scale_fill_manual(values = c("0" = "red", "1" = "green"), labels = c("0" = "Did Not Apply", "1" = "Applied"), name = "Applicant Status") +
+  labs(title = "Applicant Status by Inquiry and Sophomore Status", x = "Status", y = "Count") +
+  facet_wrap(~Soph, labeller = label_both) +
+  theme_minimal()
+
+# 6. Applicant Status by % of Advanced Degrees and Household Income
+# Combining two boxplots into one for comparing two different numerical variables against Applicant status
+ggplot(Admin_data, aes(fill = as.factor(Applicant))) +
+  geom_boxplot(aes(x = `% Adv+`, y = as.factor(Applicant)), color = "blue") +
+  geom_boxplot(aes(x = `HH $`, y = as.factor(Applicant)), color = "black") +
+  scale_fill_brewer(palette = "Set3") +
+  labs(title = "Applicant Status by % of Advanced Degrees and Household Income", x = "Value", y = "Applicant Status") +
+  theme_minimal()
+
+# 7. Applicant Status by Combined Statistical Area (CSA)
+Admin_data %>%
+  group_by(CSA, Applicant) %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  ggplot(aes(y = reorder(CSA, Count), x = Count, fill = as.factor(Applicant))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  coord_flip() +
+  scale_fill_manual(values = c("0" = "purple", "1" = "red"),
+                    labels = c("0" = "Did Not Apply", "1" = "Applied"),
+                    name = "Applicant Status") +
+  labs(title = "Applicant Status by Combined Statistical Area", y = "Count", x = "CSA") +
+  theme_minimal()
+
+# 8. Applicant Status by Distance to Wooster
+ggplot(Admin_data, aes(x = WooDist, y = as.factor(Applicant))) +
+  geom_boxplot(aes(fill = as.factor(Applicant))) +
+  scale_fill_brewer(palette = "Pastel2") +
+  labs(title = "Applicant Status by Distance to Wooster", x = "Distance to Wooster", y = "Applicant Status") +
+  theme_minimal()
+
+```
+
+
+
+```{r}
+#  logistic regression for top applicant states
+for (state in top_applicant_states) {
+  data_state <- filter(Admin_data, State == state)
+  model_1 <- glm(Applicant ~ Inquiry +  Density+ Soph + `HH $` + WooDist, data = data_state, family = "binomial")
+  print(paste("State:", state))
+  print(summary(model_1))
+}
+
+
+for (state in top_inquiry_states) {
+  data_state <- filter(Admin_data, State == state)
+  model_2 <- glm(Applicant ~ Inquiry + `C/O '22` + Male + URM + `28-36` + `23-27` + Soph + MajorCode + Density + `% Black` + `% Latino` + `%PrivHS` + `% Bach+` + `% Adv+` + `HH $` + `Fam $` + `FamK $` + Lower + LowMid + Mid + UpMid + Upper + CBSA + Metro + CSA + WooDist + Lat + Long, data = data_state, family = "binomial")
+  print(paste("State:", state))
+  print(summary(model_2))
+}
+
+
+for (state in top_inquired_not_applied_states) {
+  data_state <- filter(Admin_data, State == state)
+  model_3 <- glm(Applicant ~ Inquiry + `C/O '22` + Male + URM + `28-36` + `23-27` + Soph + MajorCode + Density + `% Black` + `% Latino` + `%PrivHS` + `% Bach+` + `% Adv+` + `HH $` + `Fam $` + `FamK $` + Lower + LowMid + Mid + UpMid + Upper + CBSA + Metro + CSA + WooDist + Lat + Long, data = data_state, family = "binomial")
+  print(paste("State:", state))
+  print(summary(model_3))
+}
+
+
+for (state in least_applicant_states) {
+  data_state <- filter(Admin_data, State == state)
+  model_4 <- glm(Applicant ~ Inquiry + `C/O '22` + Male + URM + `28-36` + `23-27` + Soph + MajorCode + Density + `% Black` + `% Latino` + `%PrivHS` + `% Bach+` + `% Adv+` + `HH $` + `Fam $` + `FamK $` + Lower + LowMid + Mid + UpMid + Upper + CBSA + Metro + CSA + WooDist + Lat + Long, data = data_state, family = "binomial")
+  print(paste("State:", state))
+  print(summary(model_4))
+}
+
+
+for (state in least_inquiry_states) {
+  data_state <- filter(Admin_data, State == state)
+  model_5 <- glm(Applicant ~ Inquiry + `C/O '22` + Male + URM + `28-36` + `23-27` + Soph + MajorCode + Density + `% Black` + `% Latino` + `%PrivHS` + `% Bach+` + `% Adv+` + `HH $` + `Fam $` + `FamK $` + Lower + LowMid + Mid + UpMid + Upper + CBSA + Metro + CSA + WooDist + Lat + Long, data = data_state, family = "binomial")
+  print(paste("State:", state))
+  print(summary(model_5))
+}
+
+
+for (state in least_inquired_not_applied_states) {
+  data_state <- filter(Admin_data, State == state)
+  model_6 <- glm(Applicant ~ Inquiry + `C/O '22` + Male + URM + `28-36` + `23-27` + Soph + MajorCode + Density + `% Black` + `% Latino` + `%PrivHS` + `% Bach+` + `% Adv+` + `HH $` + `Fam $` + `FamK $` + Lower + LowMid + Mid + UpMid + Upper + CBSA + Metro + CSA + WooDist + Lat + Long, data = data_state, family = "binomial")
+  print(paste("State:", state))
+  print(summary(model_6))
+}
+
+model1 <- glm(Applicant ~ ., data = Admin_data, family = "binomial")
+summary(model1)
+
+model2 <- glm(Applicant ~ Inquiry + `C/O '22` + Soph + `% Adv+` + `HH $` + WooDist + Zip, data = Admin_data, family = "binomial")
+summary(model2)
+
+model3 <- glm(Applicant ~ Inquiry + Soph + `% Adv+` + Zip + `HH $` + WooDist, data = Admin_data, family = "binomial")
+summary(model3)
+
+model4 <- glm(Applicant ~ Inquiry + Soph + `% Adv+` + `HH $` + CSA + WooDist, data = Admin_data, family = "binomial")
+summary(model4)
+
+model5 <- glm(Applicant ~ Inquiry + Soph + `% Adv+` + Upper + CSA + WooDist + Zip + `HH $`, data = Admin_data, family = "binomial")
+summary(model5)
+
+model6 <- glm(Applicant ~ Inquiry + Male + URM, data = Admin_data_filtered, family = "binomial")
+summary(model6)
+
+model7 <- glm(Applicant ~ Inquiry + `HH $`, data = Admin_data_filtered, family = "binomial")
+summary(model7)
+
+model8 <- glm(Applicant ~ Inquiry + State + Soph + `% Adv+` + `HH $` + WooDist, data = Admin_data_filtered, family = "binomial")
+summary(model8)
+
+model9 <- glm(Applicant ~ Inquiry * Male + Inquiry * URM + Inquiry * `HH $` + Inquiry * WooDist, data = Admin_data_filtered, family = "binomial")
+summary(model9)
+
+
+```
+
+```{r}
+models <- list(model1 = model_1, model2 = model_2, model3 = model_3, model4 =  model_4, model5 = model_5, model6 = model_6, model1. = model1, model2. = model2, model3. = model3, model4. = model4, model5. = model6, model7. = model7, model8. = model8)
+
+# Function to extract AIC and BIC for each model
+extract_aic_bic <- function(model_list) {
+  aic_bic_values <- sapply(model_list, function(x) c(AIC = AIC(x), BIC = BIC(x)))
+  return(aic_bic_values)
+}
+# Extract AIC and BIC values
+aic_bic_values <- extract_aic_bic(models)
+
+# Sort and print AIC values in descending order
+aic_values <- aic_bic_values["AIC", ]
+sorted_aic <- sort(aic_values, decreasing = TRUE)
+print("AIC Values in Descending Order:")
+print(sorted_aic)
+
+# Sort and print BIC values in descending order
+bic_values <- aic_bic_values["BIC", ]
+sorted_bic <- sort(bic_values, decreasing = TRUE)
+print("BIC Values in Descending Order:")
+print(sorted_bic)
+
+```
+
+```{r}
+odds_ratios <- exp(coef(model8))
+print(odds_ratios)
+```
+
